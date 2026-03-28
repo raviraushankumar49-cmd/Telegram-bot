@@ -1,49 +1,40 @@
+import os
 import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
-TOKEN = "8636197444:AAGSkenZi5vObBLibJc_aYAtM5jOT5Kd194"
+TOKEN = os.getenv("TOKEN")
 
-def get_terabox_link(url):
-    api = f"https://terabox-downloader-api.vercel.app/api?url={url}"
-    res = requests.get(api).json()
-    
-    if res["status"] == "success":
-        return res["download_link"]
-    return None
+async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = update.message.text
 
-def download_video(url, filename="video.mp4"):
-    r = requests.get(url, stream=True)
-    with open(filename, "wb") as f:
-        for chunk in r.iter_content(chunk_size=1024):
-            if chunk:
-                f.write(chunk)
-    return filename
+    if not url.startswith("http"):
+        await update.message.reply_text("Please send a valid link")
+        return
 
-async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
+    try:
+        await update.message.reply_text("Downloading video...")
 
-    if "terabox.com" in text:
-        await update.message.reply_text("Downloading video... ⏳")
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
 
-        link = get_terabox_link(text)
+        r = requests.get(url, headers=headers, stream=True, timeout=10)
 
-        if not link:
-            await update.message.reply_text("Error ❌ Link process nahi hua")
+        if r.status_code != 200:
+            await update.message.reply_text("Failed to download video ❌")
             return
 
-        try:
-            file_path = download_video(link)
+        with open("video.mp4", "wb") as f:
+            for chunk in r.iter_content(1024):
+                f.write(chunk)
 
-            await update.message.reply_video(video=open(file_path, "rb"))
+        with open("video.mp4", "rb") as video:
+            await update.message.reply_video(video=video)
 
-        except Exception as e:
-            await update.message.reply_text("File bada hai ❌\nDirect link 👇\n" + link)
-
-    else:
-        await update.message.reply_text("Sirf TeraBox link bhejo")
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
 
 app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(MessageHandler(filters.TEXT, handle))
-
+app.add_handler(MessageHandler(filters.TEXT, reply))
 app.run_polling()
